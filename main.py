@@ -1,7 +1,6 @@
 import os
-import smtplib
-from email.mime.text import MIMEText
 
+import resend
 from fastapi import FastAPI, Request
 from twilio.rest import Client
 
@@ -11,9 +10,10 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
-GMAIL_USER = os.getenv("GMAIL_USER")
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 OWNER_EMAIL = os.getenv("OWNER_EMAIL", "kiimigu4@gmail.com")
+
+resend.api_key = RESEND_API_KEY
 
 
 @app.get("/")
@@ -70,18 +70,16 @@ Caller Number:
 {caller_number}
 """
 
-        msg = MIMEText(email_body)
-        msg["Subject"] = email_subject
-        msg["From"] = GMAIL_USER
-        msg["To"] = OWNER_EMAIL
+        print("Sending owner email via Resend...")
 
-        print("Sending owner email...")
+        resend.Emails.send({
+            "from": "Sakura Omakase <onboarding@resend.dev>",
+            "to": [OWNER_EMAIL],
+            "subject": email_subject,
+            "text": email_body,
+        })
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-
-        print("Owner email sent successfully")
+        print("Owner email sent successfully via Resend")
 
         return {
             "success": True,
