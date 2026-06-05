@@ -75,9 +75,13 @@ Caller Number:
         msg["From"] = GMAIL_USER
         msg["To"] = OWNER_EMAIL
 
+        print("Sending owner email...")
+
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
+
+        print("Owner email sent successfully")
 
         return {
             "success": True,
@@ -88,6 +92,7 @@ Caller Number:
         }
 
     except Exception as e:
+        print("ERROR:", str(e))
         return {
             "success": False,
             "error": str(e),
