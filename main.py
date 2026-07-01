@@ -27,26 +27,34 @@ async def vapi_webhook(request: Request):
 
     intent = data.get("intent", "unknown")
     summary = data.get("summary", "")
-    caller_number = data.get("caller_number")
 
-    if not caller_number:
-        return {
-            "success": False,
-            "error": "Missing caller_number",
-            "received": data,
-        }
+    caller_number = (
+        data.get("caller_number")
+        or data.get("customer", {}).get("number")
+        or data.get("phoneNumber")
+        or data.get("from")
+    )
 
-    sms_body = """Thank you for contacting Sakura Omakase NYC.
+    name = data.get("name", "")
+    party_size = data.get("party_size", "")
+    reservation_date = data.get("reservation_date", "")
+    reservation_time = data.get("reservation_time", "")
+    allergies = data.get("allergies", "")
+    special_request = data.get("special_request", "")
 
-Reserve your table here:
+    sms_sid = None
+
+    try:
+        if intent == "reservation" and caller_number:
+            sms_body = """Thank you for contacting Sakura Omakase NYC.
+
+Your reservation request has been received.
+
+Reserve or manage your booking here:
 https://www.opentable.com/xxxx
 
 We look forward to welcoming you."""
 
-    try:
-        sms_sid = None
-
-        if intent == "reservation":
             client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
             sms = client.messages.create(
                 body=sms_body,
@@ -66,11 +74,27 @@ Intent:
 Summary:
 {summary}
 
+Guest Name:
+{name}
+
+Party Size:
+{party_size}
+
+Reservation Date:
+{reservation_date}
+
+Reservation Time:
+{reservation_time}
+
+Allergies:
+{allergies}
+
+Special Request:
+{special_request}
+
 Caller Number:
 {caller_number}
 """
-
-        print("Sending owner email via Resend...")
 
         resend.Emails.send({
             "from": "Sakura Omakase <onboarding@resend.dev>",
@@ -79,12 +103,11 @@ Caller Number:
             "text": email_body,
         })
 
-        print("Owner email sent successfully via Resend")
-
         return {
             "success": True,
+            "message": "Reservation request submitted successfully.",
             "intent": intent,
-            "sms_sent": intent == "reservation",
+            "sms_sent": bool(sms_sid),
             "sms_sid": sms_sid,
             "owner_notified": True,
         }
@@ -93,6 +116,6 @@ Caller Number:
         print("ERROR:", str(e))
         return {
             "success": False,
+            "message": "Failed to submit reservation request.",
             "error": str(e),
         }
-
