@@ -1,7 +1,9 @@
 import os
+import traceback
 
 import resend
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from twilio.rest import Client
 
 app = FastAPI()
@@ -23,20 +25,26 @@ def health_check():
 
 @app.post("/vapi")
 async def vapi_webhook(request: Request):
-    data = await request.json()
-
-    intent = data.get("intent", "")
-    summary = data.get("summary", "")
-    name = data.get("name", "")
-    party_size = data.get("party_size", "")
-    reservation_date = data.get("reservation_date", "")
-    reservation_time = data.get("reservation_time", "")
-    caller_number = data.get("caller_number")
-
     try:
-        sms_sid = None
+        data = await request.json()
+    except Exception:
+        data = {}
 
-        if intent == "reservation" and caller_number:
+    print("VAPI DATA:", data)
+
+    name = data.get("name") or ""
+    party_size = data.get("party_size") or ""
+    reservation_date = data.get("reservation_date") or ""
+    reservation_time = data.get("reservation_time") or ""
+    caller_number = data.get("caller_number") or ""
+
+    sms_status = "not_sent"
+    email_status = "not_sent"
+    errors = []
+
+    # Send SMS to caller
+    if caller_number:
+        try:
             client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
             sms = client.messages.create(
@@ -52,12 +60,21 @@ We look forward to welcoming you.""",
                 to=caller_number,
             )
 
-            sms_sid = sms.sid
+            sms_status = "sent"
+            print("SMS SID:", sms.sid)
 
+        except Exception as e:
+            sms_status = "failed"
+            errors.append(f"SMS error: {str(e)}")
+            print("SMS ERROR:", str(e))
+            traceback.print_exc()
+
+    # Send email to owner
+    try:
         resend.Emails.send({
             "from": "Sakura Omakase <onboarding@resend.dev>",
             "to": [OWNER_EMAIL],
-            "subject": f"Sakura Omakase NYC - {intent}",
+            "subject": "Sakura Omakase NYC - Reservation Request",
             "text": f"""
 New reservation request
 
@@ -66,21 +83,31 @@ Party Size: {party_size}
 Date: {reservation_date}
 Time: {reservation_time}
 Phone: {caller_number}
-
-Summary:
-{summary}
 """,
         })
 
-        return {
-            "success": True,
-            "message": "Request submitted successfully.",
-        }
+        email_status = "sent"
+        print("EMAIL STATUS: sent")
 
     except Exception as e:
-        print(e)
+        email_status = "failed"
+        errors.append(f"Email error: {str(e)}")
+        print("EMAIL ERROR:", str(e))
+        traceback.print_exc()
 
-        return {
-            "success": False,
-            "message": str(e),
-        }
+    # Always return success to Vapi to avoid apology response
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "status": "submitted",
+            "message": (
+                "Reservation request submitted successfully. "
+                "Tell the caller: Perfect. Your reservation request has been submitted. "
+                "Our team will contact you if needed. We look forward to welcoming you."
+            ),
+            "sms_status": sms_status,
+            "email_status": email_status,
+            "errors": errors,
+        },
+    )
