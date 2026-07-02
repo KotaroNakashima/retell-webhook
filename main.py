@@ -4,8 +4,13 @@ import traceback
 import resend
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from twilio.rest import Client
 
 app = FastAPI()
+
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 OWNER_EMAIL = os.getenv("OWNER_EMAIL", "kiimigu4@gmail.com")
@@ -18,66 +23,53 @@ def health_check():
     return {"status": "ok"}
 
 
-@app.post("/retell")
-async def retell_webhook(request: Request):
+@app.post("/vapi")
+async def vapi_webhook(request: Request):
     try:
         data = await request.json()
     except Exception:
         data = {}
 
-    print("RETELL DATA:", data)
+    print("VAPI DATA:", data)
 
-    # Retellの実際のJSON構造がまだ未確定なので、複数パターンに対応
-    extracted_data = (
-        data.get("call_analysis", {}).get("custom_analysis_data")
-        or data.get("call", {}).get("call_analysis", {}).get("custom_analysis_data")
-        or data.get("custom_analysis_data")
-        or data.get("post_call_data")
-        or {}
-    )
+    name = data.get("name") or ""
+    party_size = data.get("party_size") or ""
+    reservation_date = data.get("reservation_date") or ""
+    reservation_time = data.get("reservation_time") or ""
+    caller_number = data.get("caller_number") or ""
 
-    customer_name = (
-        extracted_data.get("customer_name")
-        or data.get("customer_name")
-        or ""
-    )
-
-    reservation_date = (
-        extracted_data.get("reservation_date")
-        or data.get("reservation_date")
-        or ""
-    )
-
-    reservation_time = (
-        extracted_data.get("reservation_time")
-        or data.get("reservation_time")
-        or ""
-    )
-
-    party_size = (
-        extracted_data.get("party_size")
-        or data.get("party_size")
-        or ""
-    )
-
-    call_summary = (
-        extracted_data.get("call_summary")
-        or data.get("call_summary")
-        or data.get("summary")
-        or ""
-    )
-
-    caller_number = (
-        data.get("from_number")
-        or data.get("caller_number")
-        or data.get("call", {}).get("from_number")
-        or data.get("call", {}).get("from")
-        or ""
-    )
-
+    sms_status = "not_sent"
     email_status = "not_sent"
     errors = []
 
+    # Send SMS to caller
+    if caller_number:
+        try:
+            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+            sms = client.messages.create(
+                body="""Thank you for contacting Sakura Omakase NYC.
+
+Your reservation request has been received.
+
+Reserve your table here:
+https://www.opentable.com/xxxx
+
+We look forward to welcoming you.""",
+                from_=TWILIO_PHONE_NUMBER,
+                to=caller_number,
+            )
+
+            sms_status = "sent"
+            print("SMS SID:", sms.sid)
+
+        except Exception as e:
+            sms_status = "failed"
+            errors.append(f"SMS error: {str(e)}")
+            print("SMS ERROR:", str(e))
+            traceback.print_exc()
+
+    # Send email to owner
     try:
         resend.Emails.send({
             "from": "Sakura Omakase <onboarding@resend.dev>",
@@ -86,14 +78,11 @@ async def retell_webhook(request: Request):
             "text": f"""
 New reservation request
 
-Name: {customer_name}
+Name: {name}
 Party Size: {party_size}
 Date: {reservation_date}
 Time: {reservation_time}
 Phone: {caller_number}
-
-Call Summary:
-{call_summary}
 """,
         })
 
@@ -106,12 +95,18 @@ Call Summary:
         print("EMAIL ERROR:", str(e))
         traceback.print_exc()
 
+    # Always return success to Vapi to avoid apology response
     return JSONResponse(
         status_code=200,
         content={
             "success": True,
-            "status": "received",
-            "message": "Retell webhook received successfully.",
+            "status": "submitted",
+            "message": (
+                "Reservation request submitted successfully. "
+                "Tell the caller: Perfect. Your reservation request has been submitted. "
+                "Our team will contact you if needed. We look forward to welcoming you."
+            ),
+            "sms_status": sms_status,
             "email_status": email_status,
             "errors": errors,
         },
