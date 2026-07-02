@@ -1,6 +1,7 @@
 import os
 import traceback
 
+import requests
 import resend
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -14,6 +15,7 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 OWNER_EMAIL = os.getenv("OWNER_EMAIL", "kiimigu4@gmail.com")
+MAKE_WEBHOOK_URL = os.getenv("MAKE_WEBHOOK_URL")
 
 resend.api_key = RESEND_API_KEY
 
@@ -41,6 +43,15 @@ async def vapi_webhook(request: Request):
     sms_status = "not_sent"
     email_status = "not_sent"
     errors = []
+
+    # Send data to Make
+    if MAKE_WEBHOOK_URL:
+        try:
+            requests.post(MAKE_WEBHOOK_URL, json=data, timeout=10)
+            print("MAKE STATUS: sent")
+        except Exception as e:
+            errors.append(f"Make error: {str(e)}")
+            print("MAKE ERROR:", str(e))
 
     # Send SMS to caller
     if caller_number:
