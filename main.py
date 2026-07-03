@@ -34,7 +34,7 @@ async def vapi_webhook(request: Request):
 
     print("VAPI DATA:", data)
 
-    name = data.get("name") or ""
+    customer_name = data.get("customer_name") or ""
     party_size = data.get("party_size") or ""
     reservation_date = data.get("reservation_date") or ""
     reservation_time = data.get("reservation_time") or ""
@@ -89,7 +89,7 @@ We look forward to welcoming you.""",
             "text": f"""
 New reservation request
 
-Name: {name}
+Customer Name: {customer_name}
 Party Size: {party_size}
 Date: {reservation_date}
 Time: {reservation_time}
